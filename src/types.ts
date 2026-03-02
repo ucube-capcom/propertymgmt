@@ -21,7 +21,7 @@ export interface Unit {
   area: string;
   // Joined fields
   contract_id?: number;
-  contract_type?: 'sale' | 'jeonse' | 'monthly' | 'short_term';
+  contract_type?: '매매' | '전세' | '월세' | '단기';
   customer_name?: string;
   expiration_date?: string;
 }
@@ -29,7 +29,7 @@ export interface Unit {
 export interface Contract {
   id: number;
   unit_id: number;
-  type: 'sale' | 'jeonse' | 'monthly' | 'short_term';
+  type: '매매' | '전세' | '월세' | '단기';
   price_sale: number;
   price_deposit: number;
   price_rent: number;

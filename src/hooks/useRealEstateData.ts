@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Complex, Building, Unit } from '../types';
+import { supabase } from '../lib/supabase';
 
 export function useRealEstateData() {
   const [complexes, setComplexes] = useState<Complex[]>([]);
@@ -20,18 +21,45 @@ export function useRealEstateData() {
 
   const fetchComplexes = useCallback(async () => {
     try {
-      const res = await fetch('/api/complexes');
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const data = await res.json();
-      setComplexes(data);
+      const { data, error } = await supabase.from('complexes').select('*');
+      if (error) throw error;
+      setComplexes(data || []);
       
-      setSelectedComplex(prev => prev || (data.length > 0 ? data[0] : null));
+      setSelectedComplex(prev => prev || (data && data.length > 0 ? data[0] : null));
       
-      const cRes = await fetch('/api/contracts/search?q=');
-      const cData = await cRes.json();
-      setRecentContracts(cData.slice(0, 5));
+      // Fetch recent contracts
+      const { data: cData, error: cError } = await supabase
+        .from('contracts')
+        .select(`
+          *,
+          tenant:persons!contracts_tenant_id_fkey(name),
+          units (
+            unit_number,
+            buildings (
+              name,
+              complexes (
+                name
+              )
+            )
+          )
+        `)
+        .order('created_at', { ascending: false })
+        .limit(5);
+        
+      if (!cError && cData) {
+        const mappedRecent = cData.map((c: any) => ({
+          ...c,
+          customer_name: c.tenant?.name,
+          unit_number: c.units?.unit_number,
+          building_name: c.units?.buildings?.name,
+          complex_name: c.units?.buildings?.complexes?.name
+        }));
+        setRecentContracts(mappedRecent);
+      }
     } catch (err) {
-      console.error('Failed to fetch complexes:', err);
+      console.error('Failed to fetch complexes from Supabase:', err);
+      // Ensure state is cleared on error if needed, or keep previous state
+      // For now, we just log the error as requested to avoid mock data
     }
   }, []);
 
@@ -40,30 +68,73 @@ export function useRealEstateData() {
   }, [fetchComplexes]);
 
   useEffect(() => {
-    if (selectedComplex) {
-      fetch(`/api/complexes/${selectedComplex.id}/buildings`)
-        .then(res => res.json())
-        .then(data => {
-          setBuildings(data);
-          if (data.length > 0) setSelectedBuilding(data[0]);
+    const fetchBuildings = async () => {
+      if (selectedComplex) {
+        try {
+          const { data, error } = await supabase
+            .from('buildings')
+            .select('*')
+            .eq('complex_id', selectedComplex.id);
+            
+          if (error) throw error;
+          
+          setBuildings(data || []);
+          if (data && data.length > 0) setSelectedBuilding(data[0]);
           else setSelectedBuilding(null);
-        })
-        .catch(err => console.error(err));
-    } else {
-      setBuildings([]);
-      setSelectedBuilding(null);
-    }
+        } catch (err) {
+          console.error('Failed to fetch buildings from Supabase:', err);
+          setBuildings([]);
+          setSelectedBuilding(null);
+        }
+      } else {
+        setBuildings([]);
+        setSelectedBuilding(null);
+      }
+    };
+    fetchBuildings();
   }, [selectedComplex]);
 
-  const fetchUnits = useCallback(() => {
+  const fetchUnits = useCallback(async () => {
     if (!selectedBuilding) {
       setUnits([]);
       return;
     }
-    fetch(`/api/buildings/${selectedBuilding.id}/units`)
-      .then(res => res.json())
-      .then(data => setUnits(data))
-      .catch(err => console.error(err));
+    try {
+      const { data, error } = await supabase
+        .from('units')
+        .select(`
+          *,
+          contracts (
+            id,
+            type,
+            expiration_date,
+            created_at,
+            tenant:persons!contracts_tenant_id_fkey(name)
+          )
+        `)
+        .eq('building_id', selectedBuilding.id);
+        
+      if (error) throw error;
+      
+      const mappedUnits = (data || []).map((unit: any) => {
+        const latestContract = unit.contracts && unit.contracts.length > 0 
+          ? unit.contracts.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] 
+          : null;
+          
+        return {
+          ...unit,
+          contract_id: latestContract?.id,
+          contract_type: latestContract?.type,
+          customer_name: latestContract?.tenant?.name,
+          expiration_date: latestContract?.expiration_date,
+        };
+      });
+      
+      setUnits(mappedUnits);
+    } catch (err) {
+      console.error('Failed to fetch units from Supabase:', err);
+      setUnits([]);
+    }
   }, [selectedBuilding]);
 
   useEffect(() => {
@@ -82,8 +153,8 @@ export function useRealEstateData() {
       message: '정말 이 단지를 삭제하시겠습니까?\n모든 데이터가 영구 삭제됩니다.',
       onConfirm: async () => {
         try {
-          const res = await fetch(`/api/complexes/${id}`, { method: 'DELETE' });
-          if (res.ok) {
+          const { error } = await supabase.from('complexes').delete().eq('id', id);
+          if (!error) {
             fetchComplexes();
             if (selectedComplex?.id === id) {
               setSelectedComplex(null);
@@ -92,10 +163,9 @@ export function useRealEstateData() {
             }
             setConfirmModalConfig(null);
           } else {
-            const errorData = await res.json();
             setConfirmModalConfig({
               isOpen: true,
-              message: `단지 삭제 실패: ${errorData.error || '알 수 없는 오류'}`,
+              message: `단지 삭제 실패: ${error.message || '알 수 없는 오류'}`,
               onConfirm: () => setConfirmModalConfig(null)
             });
           }
@@ -124,10 +194,116 @@ export function useRealEstateData() {
       setSearchResults([]);
       return;
     }
+    
     try {
-      const res = await fetch(`/api/contracts/search?q=${encodeURIComponent(customerSearch)}`);
-      const data = await res.json();
-      setSearchResults(data);
+      const q = customerSearch;
+      const terms = q.toLowerCase().split(' ').filter(t => t.trim().length > 0);
+      if (terms.length === 0) {
+        setSearchResults([]);
+        return;
+      }
+
+      const results: any[] = [];
+
+      // 1. Search persons
+      const { data: persons, error: pError } = await supabase
+        .from('persons')
+        .select('id, name, phone')
+        .or(`name.ilike.%${q}%,phone.ilike.%${q}%`);
+
+      if (pError) throw pError;
+
+      if (persons && persons.length > 0) {
+        const personIds = persons.map(p => p.id);
+        const { data: contracts, error: cError } = await supabase
+          .from('contracts')
+          .select(`
+            id, 
+            tenant_id,
+            unit_id,
+            units (
+              unit_number,
+              building_id,
+              buildings (
+                name,
+                complex_id,
+                complexes (
+                  name
+                )
+              )
+            )
+          `)
+          .in('tenant_id', personIds);
+
+        if (cError) throw cError;
+
+        if (contracts) {
+          contracts.forEach((c: any) => {
+            const person = persons.find(p => p.id === c.tenant_id);
+            results.push({
+              type: 'contract',
+              id: c.id,
+              customer_name: person?.name || 'Unknown',
+              customer_phone: person?.phone || '',
+              unit_id: c.unit_id,
+              unit_number: c.units?.unit_number,
+              building_id: c.units?.building_id,
+              building_name: c.units?.buildings?.name,
+              complex_id: c.units?.buildings?.complex_id,
+              complex_name: c.units?.buildings?.complexes?.name
+            });
+          });
+        }
+      }
+
+      // 2. Search Units
+      const { data: allUnits, error: uError } = await supabase
+        .from('units')
+        .select(`
+          id,
+          unit_number,
+          building_id,
+          buildings (
+            name,
+            complex_id,
+            complexes (
+              name
+            )
+          )
+        `);
+
+      if (uError) throw uError;
+
+      if (allUnits) {
+        const matchedUnits = allUnits.filter((u: any) => {
+          const complexName = u.buildings?.complexes?.name || '';
+          const buildingName = u.buildings?.name || '';
+          const unitNumber = u.unit_number || '';
+          
+          const fullName = `${complexName} ${buildingName}동 ${unitNumber}호`.toLowerCase();
+          const shortName = `${complexName} ${buildingName} ${unitNumber}`.toLowerCase();
+          
+          return terms.every(t => fullName.includes(t) || shortName.includes(t));
+        });
+
+        matchedUnits.slice(0, 20).forEach((u: any) => {
+          if (!results.some(r => r.unit_id === u.id && r.type === 'unit')) {
+            results.push({
+              type: 'unit',
+              id: `unit_${u.id}`,
+              customer_name: '단지/호수 검색',
+              unit_id: u.id,
+              unit_number: u.unit_number,
+              building_id: u.building_id,
+              building_name: u.buildings?.name,
+              complex_id: u.buildings?.complex_id,
+              complex_name: u.buildings?.complexes?.name
+            });
+          }
+        });
+      }
+
+      setSearchResults(results);
     } catch (err) {
       console.error(err);
     }
@@ -138,16 +314,49 @@ export function useRealEstateData() {
     if (complex) setSelectedComplex(complex);
 
     try {
-      const bRes = await fetch(`/api/complexes/${result.complex_id}/buildings`);
-      const bData = await bRes.json();
-      setBuildings(bData);
-      const building = bData.find((b: any) => b.id === result.building_id);
+      const { data: bData, error: bError } = await supabase
+        .from('buildings')
+        .select('*')
+        .eq('complex_id', result.complex_id);
+        
+      if (bError) throw bError;
+      
+      setBuildings(bData || []);
+      const building = bData?.find((b: any) => b.id === result.building_id);
       if (building) setSelectedBuilding(building);
 
-      const uRes = await fetch(`/api/buildings/${result.building_id}/units`);
-      const uData = await uRes.json();
-      setUnits(uData);
-      const unit = uData.find((u: any) => u.id === result.unit_id);
+      const { data: uData, error: uError } = await supabase
+        .from('units')
+        .select(`
+          *,
+          contracts (
+            id,
+            type,
+            expiration_date,
+            created_at,
+            tenant:persons!contracts_tenant_id_fkey(name)
+          )
+        `)
+        .eq('building_id', result.building_id);
+        
+      if (uError) throw uError;
+      
+      const mappedUnits = (uData || []).map((unit: any) => {
+        const latestContract = unit.contracts && unit.contracts.length > 0 
+          ? unit.contracts.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] 
+          : null;
+          
+        return {
+          ...unit,
+          contract_id: latestContract?.id,
+          contract_type: latestContract?.type,
+          customer_name: latestContract?.tenant?.name,
+          expiration_date: latestContract?.expiration_date,
+        };
+      });
+      
+      setUnits(mappedUnits);
+      const unit = mappedUnits.find((u: any) => u.id === result.unit_id);
       if (unit) {
         setSelectedUnit(unit);
         setIsUnitModalOpen(true);

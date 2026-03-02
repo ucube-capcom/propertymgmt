@@ -67,10 +67,11 @@ export function MainContent({
                       <td className="px-6 py-4">
                         {unit.contract_type ? (
                           <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                            unit.contract_type === 'sale' ? 'bg-red-100 text-red-600' :
-                            unit.contract_type === 'jeonse' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'
+                            unit.contract_type === '매매' ? 'bg-red-100 text-red-600' :
+                            unit.contract_type === '전세' ? 'bg-green-100 text-green-600' : 
+                            unit.contract_type === '단기' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'
                           }`}>
-                            {unit.contract_type === 'sale' ? '매매' : unit.contract_type === 'jeonse' ? '전세' : '월세'}
+                            {unit.contract_type}
                           </span>
                         ) : '-'}
                       </td>

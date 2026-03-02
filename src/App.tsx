@@ -11,6 +11,7 @@ import { Header } from './components/Header';
 import { MainContent } from './components/MainContent';
 import { ConfirmModal } from './components/ConfirmModal';
 import { useRealEstateData } from './hooks/useRealEstateData';
+import { supabase } from './lib/supabase';
 
 export default function App() {
   const {
@@ -107,17 +108,23 @@ export default function App() {
           setIsComplexModalOpen(false);
           setEditingComplexId(null);
         }}
-        onSuccess={() => {
+        onSuccess={async () => {
           fetchComplexes();
           if (selectedComplex && editingComplexId === selectedComplex.id) {
-            fetch(`/api/complexes/${selectedComplex.id}/buildings`)
-              .then(res => res.json())
-              .then(data => {
-                setBuildings(data);
-                if (data.length > 0) setSelectedBuilding(data[0]);
-                else setSelectedBuilding(null);
-              })
-              .catch(err => console.error(err));
+            try {
+              const { data, error } = await supabase
+                .from('buildings')
+                .select('*')
+                .eq('complex_id', selectedComplex.id)
+                .order('name');
+                
+              if (error) throw error;
+              setBuildings(data || []);
+              if (data && data.length > 0) setSelectedBuilding(data[0]);
+              else setSelectedBuilding(null);
+            } catch (err) {
+              console.error(err);
+            }
           }
         }}
       />

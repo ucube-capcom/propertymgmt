@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, History, Users, Building2, Edit2, Trash2 } from 'lucide-react';
 import { Unit, Contract, ContractFormData } from '../types';
 import { ConfirmModal } from './ConfirmModal';
+import { supabase } from '../lib/supabase';
 
 interface UnitDetailModalProps {
   isOpen: boolean;
@@ -14,7 +15,7 @@ interface UnitDetailModalProps {
 
 const initialFormState: ContractFormData = {
   unit_id: 0,
-  type: 'sale',
+  type: '매매',
   price_sale: 0,
   price_deposit: 0,
   price_rent: 0,
@@ -54,11 +55,26 @@ export function UnitDetailModal({ isOpen, onClose, unit, complexName, buildingNa
   const fetchContracts = async () => {
     if (!unit) return;
     try {
-      const res = await fetch(`/api/units/${unit.id}/contracts`);
-      if (res.ok) {
-        const data = await res.json();
-        setContracts(data);
-      }
+      const { data, error } = await supabase
+        .from('contracts')
+        .select(`
+          *,
+          tenant:persons!contracts_tenant_id_fkey(name, phone),
+          owner:persons!contracts_owner_id_fkey(name, phone)
+        `)
+        .eq('unit_id', unit.id)
+        .order('contract_date', { ascending: false });
+        
+      if (error) throw error;
+      
+      const mappedContracts = (data || []).map((contract: any) => ({
+        ...contract,
+        customer_name: contract.tenant?.name || '',
+        customer_phone: contract.tenant?.phone || '',
+        owner_name: contract.owner?.name || ''
+      }));
+      
+      setContracts(mappedContracts);
     } catch (error) {
       console.error('Error fetching contracts:', error);
     }
@@ -102,13 +118,28 @@ export function UnitDetailModal({ isOpen, onClose, unit, complexName, buildingNa
   const handleDelete = async (id: number) => {
     setConfirmModal(prev => ({ ...prev, isOpen: false }));
     try {
-      const res = await fetch(`/api/contracts/${id}`, { method: 'DELETE' });
-      if (res.ok) {
+      // Get unit_id before deleting to update status later
+      const { data: contract } = await supabase.from('contracts').select('unit_id').eq('id', id).single();
+      
+      const { error } = await supabase.from('contracts').delete().eq('id', id);
+      
+      if (!error) {
         fetchContracts();
         if (onUpdate) onUpdate();
+        
+        // Update unit status if no contracts left
+        if (contract?.unit_id) {
+           const { count } = await supabase
+            .from('contracts')
+            .select('id', { count: 'exact', head: true })
+            .eq('unit_id', contract.unit_id);
+            
+           if (count === 0) {
+             await supabase.from('units').update({ status: '공실' }).eq('id', contract.unit_id);
+           }
+        }
       } else {
-        const errorData = await res.json();
-        alert(`삭제 실패: ${errorData.error || '알 수 없는 오류'}`);
+        alert(`삭제 실패: ${error.message || '알 수 없는 오류'}`);
       }
     } catch (error) {
       console.error('Error deleting contract:', error);
@@ -119,28 +150,108 @@ export function UnitDetailModal({ isOpen, onClose, unit, complexName, buildingNa
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const url = editingId ? `/api/contracts/${editingId}` : '/api/contracts';
-      const method = editingId ? 'PUT' : 'POST';
+      // 1. Find or create tenant
+      let tenantId = null;
+      const customerName = formData.customer_name.trim();
+      const customerPhone = formData.customer_phone ? formData.customer_phone.trim() : null;
       
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
-      
-      if (res.ok) {
-        fetchContracts();
-        resetForm();
-        setActiveTab('history');
-        if (onUpdate) onUpdate();
-      } else {
-        const errorData = await res.json();
-        console.error('Server error:', errorData);
-        alert(`저장 실패: ${errorData.error || '알 수 없는 오류'}`);
+      if (customerPhone) {
+        const { data: existingTenant } = await supabase
+          .from('persons')
+          .select('id')
+          .eq('phone', customerPhone)
+          .maybeSingle();
+        
+        if (existingTenant) {
+          tenantId = existingTenant.id;
+          // Update name if changed? Let's just keep ID for now or update name
+          await supabase.from('persons').update({ name: customerName }).eq('id', tenantId);
+        }
       }
-    } catch (error) {
+      
+      if (!tenantId) {
+        const { data: newTenant, error: tenantError } = await supabase
+          .from('persons')
+          .insert([{ name: customerName, phone: customerPhone }])
+          .select('id')
+          .single();
+          
+        if (tenantError) throw tenantError;
+        tenantId = newTenant.id;
+      }
+
+      // 2. Find or create owner
+      let ownerId = null;
+      const ownerName = formData.owner_name ? formData.owner_name.trim() : null;
+      
+      if (ownerName) {
+        const { data: existingOwner } = await supabase
+          .from('persons')
+          .select('id')
+          .eq('name', ownerName)
+          .maybeSingle();
+          
+        if (existingOwner) {
+          ownerId = existingOwner.id;
+        } else {
+          const { data: newOwner, error: ownerError } = await supabase
+            .from('persons')
+            .insert([{ name: ownerName }])
+            .select('id')
+            .single();
+            
+          if (ownerError && ownerError.code !== '23505') { // Ignore duplicate error if any race condition
+             // If error, maybe just proceed without ownerId or handle it
+             console.error('Error creating owner:', ownerError);
+          } else if (newOwner) {
+            ownerId = newOwner.id;
+          }
+        }
+      }
+
+      // 3. Insert or Update Contract
+      const contractData = {
+        unit_id: formData.unit_id,
+        tenant_id: tenantId,
+        owner_id: ownerId,
+        type: formData.type,
+        price_sale: formData.type === '매매' ? (formData.price_sale || 0) : 0,
+        price_deposit: formData.type !== '매매' ? (formData.price_deposit || 0) : 0,
+        price_rent: formData.price_rent || 0,
+        contract_date: formData.contract_date || null,
+        move_in_date: formData.move_in_date || null,
+        expiration_date: formData.expiration_date || null,
+        notes: formData.notes,
+        is_active: true
+      };
+
+      let error;
+      if (editingId) {
+        const { error: updateError } = await supabase
+          .from('contracts')
+          .update(contractData)
+          .eq('id', editingId);
+        error = updateError;
+      } else {
+        const { error: insertError } = await supabase
+          .from('contracts')
+          .insert([contractData]);
+        error = insertError;
+      }
+      
+      if (error) throw error;
+      
+      // 4. Update Unit Status
+      await supabase.from('units').update({ status: '거주중' }).eq('id', formData.unit_id);
+
+      fetchContracts();
+      resetForm();
+      setActiveTab('history');
+      if (onUpdate) onUpdate();
+      
+    } catch (error: any) {
       console.error('Error saving contract:', error);
-      alert('저장 중 네트워크 오류가 발생했습니다.');
+      alert(`저장 실패: ${error.message || '알 수 없는 오류'}`);
     }
   };
 
@@ -198,11 +309,11 @@ export function UnitDetailModal({ isOpen, onClose, unit, complexName, buildingNa
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex items-center gap-3">
                         <span className={`px-3 py-1 text-xs font-bold rounded-full ${
-                          contract.type === 'sale' ? 'bg-red-100 text-red-700' :
-                          contract.type === 'jeonse' ? 'bg-green-100 text-green-700' : 
-                          contract.type === 'short_term' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
+                          contract.type === '매매' ? 'bg-red-100 text-red-700' :
+                          contract.type === '전세' ? 'bg-green-100 text-green-700' : 
+                          contract.type === '단기' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
                         }`}>
-                          {contract.type === 'sale' ? '매매' : contract.type === 'jeonse' ? '전세' : contract.type === 'short_term' ? '단기' : '월세'}
+                          {contract.type}
                         </span>
                         <span className="text-sm font-bold text-gray-900">{contract.contract_date} 계약</span>
                       </div>
@@ -229,9 +340,10 @@ export function UnitDetailModal({ isOpen, onClose, unit, complexName, buildingNa
                         <div>
                           <span className="text-[10px] text-gray-400 font-bold uppercase block">거래 금액</span>
                           <span className="text-lg font-bold text-gray-900">
-                            {contract.type === 'sale' && `${contract.price_sale.toLocaleString()}만원`}
-                            {contract.type === 'jeonse' && `${contract.price_deposit.toLocaleString()}만원`}
-                            {contract.type === 'monthly' && `${contract.price_deposit.toLocaleString()} / ${contract.price_rent.toLocaleString()}만원`}
+                            {contract.type === '매매' && `${contract.price_sale.toLocaleString()}만원`}
+                            {contract.type === '전세' && `${contract.price_deposit.toLocaleString()}만원`}
+                            {contract.type === '월세' && `${contract.price_deposit.toLocaleString()} / ${contract.price_rent.toLocaleString()}만원`}
+                            {contract.type === '단기' && `${contract.price_deposit.toLocaleString()} / ${contract.price_rent.toLocaleString()}만원`}
                           </span>
                         </div>
                       </div>
@@ -280,7 +392,7 @@ export function UnitDetailModal({ isOpen, onClose, unit, complexName, buildingNa
                     거래 유형 <span className="text-red-500">*</span>
                   </label>
                   <div className="flex gap-2">
-                    {['sale', 'jeonse', 'monthly'].map((t) => (
+                    {['매매', '전세', '월세'].map((t) => (
                       <button
                         key={t}
                         type="button"
@@ -291,7 +403,7 @@ export function UnitDetailModal({ isOpen, onClose, unit, complexName, buildingNa
                             : 'bg-white border-gray-200 text-gray-500 hover:border-gray-400'
                         }`}
                       >
-                        {t === 'sale' ? '매매' : t === 'jeonse' ? '전세' : '월세'}
+                        {t}
                       </button>
                     ))}
                   </div>
@@ -314,18 +426,18 @@ export function UnitDetailModal({ isOpen, onClose, unit, complexName, buildingNa
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-2">
-                    {formData.type === 'sale' ? '매매가' : '보증금'} (만원) <span className="text-red-500">*</span>
+                    {formData.type === '매매' ? '매매가' : '보증금'} (만원) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
-                    name={formData.type === 'sale' ? 'price_sale' : 'price_deposit'}
-                    value={formData.type === 'sale' ? formData.price_sale : formData.price_deposit}
+                    name={formData.type === '매매' ? 'price_sale' : 'price_deposit'}
+                    value={formData.type === '매매' ? formData.price_sale : formData.price_deposit}
                     onChange={handleChange}
                     required
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                   />
                 </div>
-                {formData.type === 'monthly' && (
+                {formData.type === '월세' && (
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-2">
                       월세 (만원) <span className="text-red-500">*</span>
