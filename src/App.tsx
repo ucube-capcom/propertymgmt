@@ -39,6 +39,7 @@ export default function App() {
     recentContracts,
     expandedDistricts,
     fetchComplexes,
+    fetchBuildings,
     fetchUnits,
     handleUnitClick,
     handleDeleteComplex,
@@ -94,6 +95,7 @@ export default function App() {
         onClose={() => {
           setIsUnitModalOpen(false);
           fetchUnits();
+          fetchBuildings();
           fetchComplexes();
         }}
         unit={selectedUnit}

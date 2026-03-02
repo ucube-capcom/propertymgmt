@@ -11,6 +11,7 @@ export interface Building {
   id: number;
   complex_id: number;
   name: string;
+  has_contract?: boolean;
 }
 
 export interface Unit {

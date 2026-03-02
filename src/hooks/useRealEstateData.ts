@@ -102,44 +102,60 @@ export function useRealEstateData() {
     fetchComplexes();
   }, [fetchComplexes]);
 
-  useEffect(() => {
-    const fetchBuildings = async () => {
-      if (selectedComplex) {
-        try {
-          const { data, error } = await supabase
-            .from('buildings')
-            .select('*')
-            .eq('complex_id', selectedComplex.id);
-            
-          if (error) throw error;
+  const fetchBuildings = useCallback(async () => {
+    if (selectedComplex) {
+      try {
+        const { data, error } = await supabase
+          .from('buildings')
+          .select(`
+            *,
+            units (
+              contracts (id)
+            )
+          `)
+          .eq('complex_id', selectedComplex.id);
           
-          const sortedBuildings = (data || []).sort((a, b) => 
-            a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
-          );
-          
-          setBuildings(sortedBuildings);
-          if (sortedBuildings.length > 0) {
-            setSelectedBuilding(prev => {
-              if (prev && prev.complex_id === selectedComplex.id) {
-                return prev;
-              }
-              return sortedBuildings[0];
-            });
-          } else {
-            setSelectedBuilding(null);
-          }
-        } catch (err) {
-          console.error('Failed to fetch buildings from Supabase:', err);
-          setBuildings([]);
+        if (error) throw error;
+        
+        const mappedBuildings = (data || []).map((b: any) => {
+          const hasContract = b.units?.some((u: any) => u.contracts && u.contracts.length > 0);
+          const { units, ...rest } = b;
+          return {
+            ...rest,
+            has_contract: hasContract
+          };
+        });
+
+        const sortedBuildings = mappedBuildings.sort((a, b) => 
+          a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+        );
+        
+        setBuildings(sortedBuildings);
+        if (sortedBuildings.length > 0) {
+          setSelectedBuilding(prev => {
+            if (prev && prev.complex_id === selectedComplex.id) {
+              const updated = sortedBuildings.find((b: any) => b.id === prev.id);
+              return updated || prev;
+            }
+            return sortedBuildings[0];
+          });
+        } else {
           setSelectedBuilding(null);
         }
-      } else {
+      } catch (err) {
+        console.error('Failed to fetch buildings from Supabase:', err);
         setBuildings([]);
         setSelectedBuilding(null);
       }
-    };
-    fetchBuildings();
+    } else {
+      setBuildings([]);
+      setSelectedBuilding(null);
+    }
   }, [selectedComplex]);
+
+  useEffect(() => {
+    fetchBuildings();
+  }, [fetchBuildings]);
 
   const fetchUnits = useCallback(async () => {
     if (!selectedBuilding) {
@@ -465,6 +481,7 @@ export function useRealEstateData() {
     recentContracts,
     expandedDistricts,
     fetchComplexes,
+    fetchBuildings,
     fetchUnits,
     handleUnitClick,
     handleDeleteComplex,

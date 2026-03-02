@@ -177,13 +177,16 @@ export function Sidebar({
                                   <button
                                     key={building.id}
                                     onClick={() => setSelectedBuilding(building)}
-                                    className={`text-xs py-1.5 rounded-md text-center transition-colors ${
+                                    className={`relative text-xs py-1.5 rounded-md text-center transition-colors ${
                                       selectedBuilding?.id === building.id
                                         ? 'bg-blue-600 text-white font-bold shadow-sm'
                                         : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300'
                                     }`}
                                   >
                                     {building.name}동
+                                    {building.has_contract && (
+                                      <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                                    )}
                                   </button>
                                 ))}
                               </div>
