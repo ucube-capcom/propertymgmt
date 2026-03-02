@@ -18,6 +18,7 @@ export function useRealEstateData() {
   const [recentContracts, setRecentContracts] = useState<any[]>([]);
   const [expandedDistricts, setExpandedDistricts] = useState<Record<string, boolean>>({});
   const [confirmModalConfig, setConfirmModalConfig] = useState<{ isOpen: boolean; message: string; onConfirm: () => void; } | null>(null);
+  const [selectedContractId, setSelectedContractId] = useState<number | null>(null);
 
   const fetchComplexes = useCallback(async () => {
     try {
@@ -35,8 +36,10 @@ export function useRealEstateData() {
           tenant:persons!contracts_tenant_id_fkey(name),
           units (
             unit_number,
+            building_id,
             buildings (
               name,
+              complex_id,
               complexes (
                 name
               )
@@ -51,7 +54,9 @@ export function useRealEstateData() {
           ...c,
           customer_name: c.tenant?.name,
           unit_number: c.units?.unit_number,
+          building_id: c.units?.building_id,
           building_name: c.units?.buildings?.name,
+          complex_id: c.units?.buildings?.complex_id,
           complex_name: c.units?.buildings?.complexes?.name
         }));
         setRecentContracts(mappedRecent);
@@ -79,8 +84,16 @@ export function useRealEstateData() {
           if (error) throw error;
           
           setBuildings(data || []);
-          if (data && data.length > 0) setSelectedBuilding(data[0]);
-          else setSelectedBuilding(null);
+          if (data && data.length > 0) {
+            setSelectedBuilding(prev => {
+              if (prev && prev.complex_id === selectedComplex.id) {
+                return prev;
+              }
+              return data[0];
+            });
+          } else {
+            setSelectedBuilding(null);
+          }
         } catch (err) {
           console.error('Failed to fetch buildings from Supabase:', err);
           setBuildings([]);
@@ -131,6 +144,13 @@ export function useRealEstateData() {
       });
       
       setUnits(mappedUnits);
+      
+      // Update selectedUnit if it exists to reflect any status changes
+      setSelectedUnit(prev => {
+        if (!prev) return prev;
+        const updated = mappedUnits.find((u: any) => u.id === prev.id);
+        return updated || prev;
+      });
     } catch (err) {
       console.error('Failed to fetch units from Supabase:', err);
       setUnits([]);
@@ -140,6 +160,12 @@ export function useRealEstateData() {
   useEffect(() => {
     fetchUnits();
   }, [fetchUnits]);
+
+  useEffect(() => {
+    if (selectedUnit && selectedBuilding && selectedUnit.building_id !== selectedBuilding.id) {
+      setSelectedUnit(null);
+    }
+  }, [selectedBuilding, selectedUnit]);
 
   const handleUnitClick = (unit: Unit) => {
     setSelectedUnit(unit);
@@ -310,6 +336,7 @@ export function useRealEstateData() {
   };
 
   const handleSearchResultClick = async (result: any) => {
+    console.log('handleSearchResultClick result:', result);
     const complex = complexes.find(c => c.id === result.complex_id);
     if (complex) setSelectedComplex(complex);
 
@@ -357,8 +384,17 @@ export function useRealEstateData() {
       
       setUnits(mappedUnits);
       const unit = mappedUnits.find((u: any) => u.id === result.unit_id);
+      console.log('Found unit:', unit);
       if (unit) {
         setSelectedUnit(unit);
+        if (result.type === 'contract') {
+          setSelectedContractId(result.id);
+        } else if (result.type !== 'unit' && result.id && typeof result.id === 'number') {
+          // Recent contracts don't have a 'type' field, but their id is a number
+          setSelectedContractId(result.id);
+        } else {
+          setSelectedContractId(null);
+        }
         setIsUnitModalOpen(true);
       }
     } catch (err) {
@@ -398,6 +434,8 @@ export function useRealEstateData() {
     handleSearch,
     handleSearchResultClick,
     confirmModalConfig,
-    setConfirmModalConfig
+    setConfirmModalConfig,
+    selectedContractId,
+    setSelectedContractId
   };
 }

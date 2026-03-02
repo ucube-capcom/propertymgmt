@@ -19,6 +19,7 @@ export interface Unit {
   unit_number: string;
   floor: number;
   area: string;
+  status?: string;
   // Joined fields
   contract_id?: number;
   contract_type?: '매매' | '전세' | '월세' | '단기';

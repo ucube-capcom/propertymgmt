@@ -85,6 +85,7 @@ export default function App() {
           viewMode={viewMode}
           units={units}
           handleUnitClick={handleUnitClick}
+          selectedUnit={selectedUnit}
         />
       </main>
 

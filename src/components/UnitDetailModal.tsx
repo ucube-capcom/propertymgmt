@@ -255,6 +255,32 @@ export function UnitDetailModal({ isOpen, onClose, unit, complexName, buildingNa
     }
   };
 
+  const handleToggleEmptySpace = async () => {
+    if (!unit) return;
+    
+    const newStatus = unit.status === '빈공간' ? '공실' : '빈공간';
+    
+    if (newStatus === '빈공간' && contracts.length > 0) {
+      alert('계약 이력이 있는 호수는 빈공간으로 처리할 수 없습니다. 먼저 계약 이력을 삭제해주세요.');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('units')
+        .update({ status: newStatus })
+        .eq('id', unit.id);
+
+      if (error) throw error;
+      
+      if (onUpdate) onUpdate();
+      onClose();
+    } catch (error: any) {
+      console.error('Error toggling empty space:', error);
+      alert(`상태 변경 실패: ${error.message || '알 수 없는 오류'}`);
+    }
+  };
+
   if (!isOpen || !unit) return null;
 
   return (
@@ -267,31 +293,57 @@ export function UnitDetailModal({ isOpen, onClose, unit, complexName, buildingNa
             </h2>
             <p className="text-sm text-gray-500">{unit.area}</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-            <X className="w-5 h-5 text-gray-500" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleToggleEmptySpace}
+              className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors ${
+                unit.status === '빈공간' 
+                  ? 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200' 
+                  : 'bg-white text-red-600 border-red-200 hover:bg-red-50'
+              }`}
+            >
+              {unit.status === '빈공간' ? '빈공간 해제' : '빈공간 처리'}
+            </button>
+            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
+          </div>
         </div>
 
         <div className="flex border-b border-gray-200">
           <button
-            className={`flex-1 py-3 text-sm font-medium ${activeTab === 'history' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-            onClick={() => setActiveTab('history')}
+            className={`flex-1 py-3 text-sm font-medium ${activeTab === 'history' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'} ${unit.status === '빈공간' ? 'opacity-50 cursor-not-allowed' : ''}`}
+            onClick={() => unit.status !== '빈공간' && setActiveTab('history')}
+            disabled={unit.status === '빈공간'}
           >
             계약 이력 관리
           </button>
           <button
-            className={`flex-1 py-3 text-sm font-medium ${activeTab === 'register' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+            className={`flex-1 py-3 text-sm font-medium ${activeTab === 'register' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'} ${unit.status === '빈공간' ? 'opacity-50 cursor-not-allowed' : ''}`}
             onClick={() => {
+              if (unit.status === '빈공간') return;
               if (activeTab !== 'register') resetForm();
               setActiveTab('register');
             }}
+            disabled={unit.status === '빈공간'}
           >
             {editingId ? '계약 정보 수정' : '새 계약 등록'}
           </button>
         </div>
 
         <div className="p-6 flex-1 overflow-y-auto bg-gray-50">
-          {activeTab === 'history' ? (
+          {unit.status === '빈공간' ? (
+            <div className="flex flex-col items-center justify-center h-full py-12 text-gray-500">
+              <div className="w-16 h-16 mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                <X className="w-8 h-8 text-gray-400" />
+              </div>
+              <p className="text-lg font-medium text-gray-900 mb-2">빈공간으로 처리된 호수입니다</p>
+              <p className="text-sm text-gray-500 text-center max-w-sm">
+                실제로는 존재하지 않는 호수입니다.<br/>
+                계약을 등록하려면 우측 상단의 '빈공간 해제' 버튼을 클릭하세요.
+              </p>
+            </div>
+          ) : activeTab === 'history' ? (
             <div className="space-y-4">
               {contracts.length === 0 ? (
                 <div className="text-center py-12 bg-white rounded-xl border border-dashed border-gray-300">

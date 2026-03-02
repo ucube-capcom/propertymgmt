@@ -8,13 +8,15 @@ interface MainContentProps {
   viewMode: 'grid' | 'list';
   units: Unit[];
   handleUnitClick: (unit: Unit) => void;
+  selectedUnit?: Unit | null;
 }
 
 export function MainContent({
   selectedBuilding,
   viewMode,
   units,
-  handleUnitClick
+  handleUnitClick,
+  selectedUnit
 }: MainContentProps) {
   return (
     <div className="flex-1 overflow-auto p-8">
@@ -40,7 +42,7 @@ export function MainContent({
           </div>
           
           {viewMode === 'grid' ? (
-            <UnitGrid units={units} onUnitClick={handleUnitClick} />
+            <UnitGrid units={units} onUnitClick={handleUnitClick} selectedUnit={selectedUnit} />
           ) : (
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
               <table className="w-full text-left border-collapse">
@@ -55,7 +57,7 @@ export function MainContent({
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {units.map(unit => (
-                    <tr key={unit.id} className="hover:bg-gray-50 transition-colors">
+                    <tr key={unit.id} className={`transition-colors ${selectedUnit?.id === unit.id ? 'bg-blue-50 ring-1 ring-inset ring-blue-500' : 'hover:bg-gray-50'}`}>
                       <td className="px-6 py-4 font-bold text-gray-900">{unit.unit_number}호</td>
                       <td className="px-6 py-4">
                         {unit.customer_name ? (
