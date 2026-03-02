@@ -5,7 +5,7 @@ import { Complex, Building } from '../types';
 interface SidebarProps {
   customerSearch: string;
   setCustomerSearch: (val: string) => void;
-  handleSearch: (e: React.FormEvent) => void;
+  handleSearch: (e?: React.FormEvent | string, overrideQuery?: string) => void;
   searchResults: any[];
   handleSearchResultClick: (result: any) => void;
   complexes: Complex[];

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Home, ChevronRight, Edit2, Trash2, LayoutGrid, Users } from 'lucide-react';
+import { Home, ChevronRight, Edit2, Trash2, LayoutGrid, Users, Smartphone } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Complex, Building } from '../types';
 
 interface HeaderProps {
@@ -59,6 +60,13 @@ export function Header({
           </h2>
         </div>
         <div className="flex gap-3">
+          <Link
+            to="/mobile"
+            className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-xl border border-indigo-100 shadow-sm flex items-center gap-2 hover:bg-indigo-100 transition-colors font-medium text-sm"
+          >
+            <Smartphone className="w-4 h-4" />
+            모바일 버전
+          </Link>
           <div className="bg-white px-4 py-2 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3">
             <LayoutGrid className="w-5 h-5 text-blue-500" />
             <div>

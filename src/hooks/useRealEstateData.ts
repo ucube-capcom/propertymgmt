@@ -264,15 +264,25 @@ export function useRealEstateData() {
     }));
   };
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!customerSearch) {
+  const handleSearch = async (e?: React.FormEvent | string, overrideQuery?: string) => {
+    if (e && typeof e !== 'string' && 'preventDefault' in e) {
+      (e as React.FormEvent).preventDefault();
+    }
+    
+    let q = customerSearch;
+    if (typeof e === 'string') {
+      q = e;
+    }
+    if (overrideQuery !== undefined) {
+      q = overrideQuery;
+    }
+
+    if (!q) {
       setSearchResults([]);
       return;
     }
     
     try {
-      const q = customerSearch;
       const terms = q.toLowerCase().split(' ').filter(t => t.trim().length > 0);
       if (terms.length === 0) {
         setSearchResults([]);
@@ -345,6 +355,11 @@ export function useRealEstateData() {
             complexes (
               name
             )
+          ),
+          contracts (
+            id,
+            created_at,
+            tenant:persons!contracts_tenant_id_fkey(name, phone)
           )
         `);
 
@@ -364,10 +379,20 @@ export function useRealEstateData() {
 
         matchedUnits.slice(0, 20).forEach((u: any) => {
           if (!results.some(r => r.unit_id === u.id && r.type === 'unit')) {
+            // Get latest contract for this unit
+            const sortedContracts = u.contracts ? [...u.contracts].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) : [];
+            const latestContract = sortedContracts.length > 0 ? sortedContracts[0] : null;
+
+            // If we already added this contract in step 1, skip it to avoid duplicates
+            if (latestContract && results.some(r => r.id === latestContract.id)) {
+              return;
+            }
+
             results.push({
               type: 'unit',
               id: `unit_${u.id}`,
-              customer_name: '단지/호수 검색',
+              customer_name: latestContract ? latestContract.tenant?.name : '단지/호수 검색 (공실)',
+              customer_phone: latestContract ? latestContract.tenant?.phone : '',
               unit_id: u.id,
               unit_number: u.unit_number,
               building_id: u.building_id,
