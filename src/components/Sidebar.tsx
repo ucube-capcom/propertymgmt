@@ -1,6 +1,6 @@
 import React from 'react';
 import { Building2, Search, ChevronRight, Users, Plus, MapPin, ChevronDown } from 'lucide-react';
-import { Complex } from '../types';
+import { Complex, Building } from '../types';
 
 interface SidebarProps {
   customerSearch: string;
@@ -11,6 +11,9 @@ interface SidebarProps {
   complexes: Complex[];
   selectedComplex: Complex | null;
   setSelectedComplex: (complex: Complex | null) => void;
+  buildings: Building[];
+  selectedBuilding: Building | null;
+  setSelectedBuilding: (building: Building | null) => void;
   setIsComplexModalOpen: (isOpen: boolean) => void;
   expandedDistricts: Record<string, boolean>;
   toggleDistrict: (district: string) => void;
@@ -27,6 +30,9 @@ export function Sidebar({
   complexes,
   selectedComplex,
   setSelectedComplex,
+  buildings,
+  selectedBuilding,
+  setSelectedBuilding,
   setIsComplexModalOpen,
   expandedDistricts,
   toggleDistrict,
@@ -165,6 +171,23 @@ export function Sidebar({
                                 {complex.building_count}동
                               </span>
                             </button>
+                            {selectedComplex?.id === complex.id && buildings.length > 0 && (
+                              <div className="mt-1.5 mb-2 px-2 grid grid-cols-3 gap-1.5">
+                                {buildings.map(building => (
+                                  <button
+                                    key={building.id}
+                                    onClick={() => setSelectedBuilding(building)}
+                                    className={`text-xs py-1.5 rounded-md text-center transition-colors ${
+                                      selectedBuilding?.id === building.id
+                                        ? 'bg-blue-600 text-white font-bold shadow-sm'
+                                        : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300'
+                                    }`}
+                                  >
+                                    {building.name}동
+                                  </button>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>

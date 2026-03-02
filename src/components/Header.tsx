@@ -7,9 +7,6 @@ interface HeaderProps {
   setEditingComplexId: (id: number | null) => void;
   setIsComplexModalOpen: (isOpen: boolean) => void;
   handleDeleteComplex: (e: React.MouseEvent, id: number) => void;
-  buildings: Building[];
-  selectedBuilding: Building | null;
-  setSelectedBuilding: (building: Building | null) => void;
   viewMode: 'grid' | 'list';
   setViewMode: (mode: 'grid' | 'list') => void;
 }
@@ -19,9 +16,6 @@ export function Header({
   setEditingComplexId,
   setIsComplexModalOpen,
   handleDeleteComplex,
-  buildings,
-  selectedBuilding,
-  setSelectedBuilding,
   viewMode,
   setViewMode
 }: HeaderProps) {
@@ -75,28 +69,9 @@ export function Header({
         </div>
       </div>
 
-      {/* Building Selector */}
+      {/* View Mode Selector */}
       {selectedComplex && (
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
-            <div className="flex items-center gap-2 p-1 bg-gray-100 rounded-xl">
-              {buildings.map(building => (
-                <button
-                  key={building.id}
-                  onClick={() => setSelectedBuilding(building)}
-                  className={`
-                    px-5 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap
-                    ${selectedBuilding?.id === building.id
-                      ? 'bg-white text-blue-600 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-900 hover:bg-white/50'}
-                  `}
-                >
-                  {building.name}동
-                </button>
-              ))}
-            </div>
-          </div>
-          
+        <div className="flex items-center justify-end">
           <div className="flex bg-gray-100 p-1 rounded-xl gap-1">
             <button 
               onClick={() => setViewMode('grid')}

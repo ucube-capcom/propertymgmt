@@ -60,6 +60,9 @@ export default function App() {
         complexes={complexes}
         selectedComplex={selectedComplex}
         setSelectedComplex={setSelectedComplex}
+        buildings={buildings}
+        selectedBuilding={selectedBuilding}
+        setSelectedBuilding={setSelectedBuilding}
         setIsComplexModalOpen={setIsComplexModalOpen}
         expandedDistricts={expandedDistricts}
         toggleDistrict={toggleDistrict}
@@ -73,9 +76,6 @@ export default function App() {
           setEditingComplexId={setEditingComplexId}
           setIsComplexModalOpen={setIsComplexModalOpen}
           handleDeleteComplex={handleDeleteComplex}
-          buildings={buildings}
-          selectedBuilding={selectedBuilding}
-          setSelectedBuilding={setSelectedBuilding}
           viewMode={viewMode}
           setViewMode={setViewMode}
         />

@@ -22,11 +22,41 @@ export function useRealEstateData() {
 
   const fetchComplexes = useCallback(async () => {
     try {
-      const { data, error } = await supabase.from('complexes').select('*');
+      const { data, error } = await supabase
+        .from('complexes')
+        .select(`
+          *,
+          buildings (
+            id,
+            units (id, status)
+          )
+        `);
       if (error) throw error;
-      setComplexes(data || []);
       
-      setSelectedComplex(prev => prev || (data && data.length > 0 ? data[0] : null));
+      const mappedComplexes = (data || []).map((c: any) => {
+        const buildingCount = c.buildings ? c.buildings.length : 0;
+        const unitCount = c.buildings ? c.buildings.reduce((sum: number, b: any) => {
+          const validUnits = b.units ? b.units.filter((u: any) => u.status !== '빈공간') : [];
+          return sum + validUnits.length;
+        }, 0) : 0;
+        
+        // Remove the nested buildings array to keep the Complex object clean
+        const { buildings, ...rest } = c;
+        
+        return {
+          ...rest,
+          building_count: buildingCount,
+          unit_count: unitCount
+        };
+      });
+      
+      setComplexes(mappedComplexes);
+      
+      setSelectedComplex(prev => {
+        if (!prev) return mappedComplexes.length > 0 ? mappedComplexes[0] : null;
+        const updated = mappedComplexes.find((c: any) => c.id === prev.id);
+        return updated || prev;
+      });
       
       // Fetch recent contracts
       const { data: cData, error: cError } = await supabase
@@ -83,13 +113,17 @@ export function useRealEstateData() {
             
           if (error) throw error;
           
-          setBuildings(data || []);
-          if (data && data.length > 0) {
+          const sortedBuildings = (data || []).sort((a, b) => 
+            a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+          );
+          
+          setBuildings(sortedBuildings);
+          if (sortedBuildings.length > 0) {
             setSelectedBuilding(prev => {
               if (prev && prev.complex_id === selectedComplex.id) {
                 return prev;
               }
-              return data[0];
+              return sortedBuildings[0];
             });
           } else {
             setSelectedBuilding(null);
@@ -348,8 +382,12 @@ export function useRealEstateData() {
         
       if (bError) throw bError;
       
-      setBuildings(bData || []);
-      const building = bData?.find((b: any) => b.id === result.building_id);
+      const sortedBuildings = (bData || []).sort((a, b) => 
+        a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+      );
+      
+      setBuildings(sortedBuildings);
+      const building = sortedBuildings.find((b: any) => b.id === result.building_id);
       if (building) setSelectedBuilding(building);
 
       const { data: uData, error: uError } = await supabase
