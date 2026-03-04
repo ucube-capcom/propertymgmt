@@ -125,7 +125,7 @@ export function MobileApp() {
                   <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
                     <MapPin className="w-4 h-4" /> 단지 목록
                   </h2>
-                  {Object.entries(complexesByDistrict).map(([district, districtComplexes]) => (
+                  {(Object.entries(complexesByDistrict) as [string, Complex[]][]).map(([district, districtComplexes]) => (
                     <div key={district} className="space-y-2">
                       <h3 className="text-xs font-medium text-gray-400 ml-1">{district}</h3>
                       {districtComplexes.map(complex => (

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { districtDongMap } from '../data/districtDongMap';
 
 interface ComplexModalProps {
   isOpen: boolean;
@@ -21,8 +22,8 @@ export function ComplexModal({ isOpen, onClose, onSuccess, complexId }: ComplexM
   const [step, setStep] = useState<1 | 2>(1);
   const [formData, setFormData] = useState({
     name: '',
-    district: '강북구',
-    neighborhood: '미아동',
+    district: '',
+    neighborhood: '',
     building_count: 1,
   });
   const [buildings, setBuildings] = useState<BuildingConfig[]>([]);
@@ -80,8 +81,8 @@ export function ComplexModal({ isOpen, onClose, onSuccess, complexId }: ComplexM
       } else {
         setFormData({
           name: '',
-          district: '강북구',
-          neighborhood: '미아동',
+          district: '',
+          neighborhood: '',
           building_count: 1,
         });
         setBuildings([]);
@@ -326,28 +327,36 @@ export function ComplexModal({ isOpen, onClose, onSuccess, complexId }: ComplexM
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">구</label>
-                  <input
-                    type="text"
+                  <select
                     name="district"
+                    required
                     value={formData.district}
-                    onChange={handleBasicChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
-                    readOnly
-                  />
+                    onChange={(e) => {
+                      handleBasicChange(e);
+                      setFormData(prev => ({ ...prev, neighborhood: '' }));
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                  >
+                    <option value="">구를 선택하세요</option>
+                    {Object.keys(districtDongMap).map(district => (
+                      <option key={district} value={district}>{district}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">동(행정동)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">동(법정동)</label>
                   <select
                     name="neighborhood"
+                    required
                     value={formData.neighborhood}
                     onChange={handleBasicChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
+                    disabled={!formData.district}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white disabled:bg-gray-100"
                   >
-                    <option value="미아동">미아동</option>
-                    <option value="삼각산동">삼각산동</option>
-                    <option value="송천동">송천동</option>
-                    <option value="송중동">송중동</option>
-                    <option value="번동">번동</option>
+                    <option value="">동을 선택하세요</option>
+                    {formData.district && districtDongMap[formData.district]?.map(dong => (
+                      <option key={dong} value={dong}>{dong}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -369,7 +378,7 @@ export function ComplexModal({ isOpen, onClose, onSuccess, complexId }: ComplexM
                 <button
                   type="button"
                   onClick={handleNext}
-                  disabled={!formData.name}
+                  disabled={!formData.name || !formData.district || !formData.neighborhood}
                   className="w-full py-2.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-bold disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                 >
                   다음: 동별 상세 설정
